@@ -18,6 +18,9 @@
 ```bash
 git clone https://github.com/dixw/spherex-timelapse-explorer
 cd spherex-timelapse-explorer
+
+AI Disclosure: Large Language Model assistance was used during development to accelerate FastAPI/Astropy code structuring, debugging, and English documentation drafting. All astronomical images, FITS cutouts, and catalog measurements are 100% authentic scientific data from NASA/IPAC IRSA and ESA Gaia DR3.
+
 python -m venv venv
 source venv/Scripts/activate  # Windows Git Bash
 pip install -r requirements.txt
