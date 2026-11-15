@@ -1,0 +1,7 @@
+venv/
+__pycache__/
+*.pyc
+static/frames/*
+static/cache/*
+!static/frames/.gitkeep
+!static/cache/.gitkeep

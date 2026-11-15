@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SPHEREx Time-Lapse Explorer | NASA Space Apps 2026</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://w3.org viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔭</text></svg>">
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --panel: #131a2a;
+      --border: #23304d;
+      --accent: #38bdf8;
+      --accent-hover: #0284c7;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+    }
+    * { box-sizing: border-box; font-family: 'Segoe UI', system-ui, sans-serif; }
+    body {
+      margin: 0; background: var(--bg); color: var(--text);
+      display: flex; flex-direction: column; min-height: 100vh;
+    }
+    header {
+      background: var(--panel); border-bottom: 1px solid var(--border);
+      padding: 16px 28px; display: flex; justify-content: space-between; align-items: center;
+    }
+    header h1 { margin: 0; font-size: 1.25rem; color: var(--accent); letter-spacing: 0.5px; }
+    header span { font-size: 0.85rem; color: var(--muted); }
+    .container {
+      display: grid; grid-template-columns: 340px 1fr; gap: 24px;
+      padding: 24px; max-width: 1400px; width: 100%; margin: 0 auto; flex: 1;
+    }
+    .card {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 12px; padding: 20px;
+    }
+    h2 { margin-top: 0; font-size: 1rem; color: #e2e8f0; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+    label { display: block; font-size: 0.82rem; color: var(--muted); margin-top: 12px; margin-bottom: 4px; }
+    input, select, button {
+      width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--border);
+      background: #0f1624; color: var(--text); font-size: 0.92rem;
+    }
+    button {
+      background: var(--accent); color: #0b0f19; font-weight: 700; cursor: pointer;
+      border: none; margin-top: 16px; transition: 0.2s;
+    }
+    button:hover { background: var(--accent-hover); color: #fff; }
+    button.secondary {
+      background: #1e293b; color: var(--text); border: 1px solid var(--border);
+      margin-top: 8px; font-weight: 500; text-align: left;
+    }
+    button.secondary:hover { border-color: var(--accent); background: #172554; }
+    .viewer-area { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .canvas-box {
+      position: relative; width: 460px; height: 460px; background: #000;
+      border: 2px solid var(--border); border-radius: 12px; overflow: hidden;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .canvas-box img { width: 100%; height: 100%; object-fit: contain; }
+    .hud-overlay {
+      position: absolute; top: 12px; left: 12px; right: 12px;
+      display: flex; justify-content: space-between; pointer-events: none;
+      font-family: monospace; font-size: 0.85rem; text-shadow: 0 1px 4px #000;
+    }
+    .hud-badge { background: rgba(11, 15, 25, 0.78); padding: 4px 10px; border-radius: 6px; border: 1px solid #334155; }
+    .controls {
+      width: 100%; max-width: 600px; margin-top: 20px; display: flex; flex-direction: column; gap: 12px;
+    }
+    .btn-row { display: flex; gap: 10px; }
+    .btn-row button { margin-top: 0; }
+    .status { margin-top: 12px; font-size: 0.88rem; color: var(--accent); min-height: 20px; text-align: center; }
+    @media (max-width: 900px) {
+      .container { grid-template-columns: 1fr; }
+      .canvas-box { width: 100%; height: 360px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>SPHEREx Time-Lapse Explorer</h1>
+    <span>NASA Space Apps Challenge 2026 &bull; Planet X &amp; SPHEREx</span>
+  </header>
+
+  <div class="container">
+    <aside class="card">
+      <h2>1. Objetivos Recomendados NASA</h2>
+      <div id="presets-list">Cargando objetivos...</div>
+
+      <h2 style="margin-top: 24px;">2. Búsqueda por Coordenadas</h2>
+      <label for="ra">Ascensión Recta (RA en grados)</label>
+      <input type="number" id="ra" step="0.00001" value="269.45208" />
+
+      <label for="dec">Declinación (Dec en grados)</label>
+      <input type="number" id="dec" step="0.00001" value="4.69336" />
+<label for="size">Campo de visión (grados)</label>
+      <select id="size">
+        <option value="0.03">0.03° (Zoom Alto)</option>
+        <option value="0.05" selected>0.05° (Estándar)</option>
+        <option value="0.10">0.10° (Campo Amplio)</option>
+      </select>
+
+      <label for="band">Banda Infrarroja</label>
+      <select id="band">
+        <option value="ALL">Todas las bandas disponibles</option>
+      </select>
+
+      <button id="btn-search" onclick="fetchTimelapse()">Generar Time-Lapse</button>
+      <button class="secondary" style="text-align:center;" onclick="copyShareLink()">Copiar Enlace Compartible</button>
+    </aside>
+
+    <main class="card viewer-area">
+      <div class="canvas-box">
+        <div class="hud-overlay" id="hud" style="display:none;">
+          <span class="hud-badge" id="hud-date">Fecha: --</span>
+          <span class="hud-badge" id="hud-band">Banda: --</span>
+        </div>
+        <img id="frame-img" src="" alt="Vista previa SPHEREx" style="display:none;" />
+        <p id="placeholder-text" style="color: var(--muted); text-align:center; padding: 20px;">
+          Selecciona un objetivo recomendado o ingresa coordenadas para descargar recortes reales de NASA/IPAC IRSA.
+        </p>
+      </div>
+
+      <div class="status" id="status-msg">Listo para consultar el archivo SPHEREx.</div>
+
+      <div class="controls" id="player-controls" style="display:none;">
+        <input type="range" id="frame-slider" min="0" max="0" value="0" oninput="showFrame(this.value)" />
+        <div class="btn-row">
+          <button id="btn-play" onclick="togglePlay()">&#9654; Reproducir</button>
+          <button class="secondary" style="text-align:center;" onclick="blinkEndpoints()">&#9889; Comparar Inicio vs Fin</button>
+          <button class="secondary" style="text-align:center;" onclick="generateFalseColorRGB()">&#127752; Falso Color RGB</button>
+          <button class="secondary" style="text-align:center;" onclick="toggleDiffMode()">&#128300; Mapa de Resta</button>
+          <button class="secondary" style="text-align:center;" onclick="queryGaiaCatalog()">&#11088; Catálogo Gaia</button>
+          <button class="secondary" style="text-align:center;" onclick="generateGaiaOverlay()">&#127919; Overlay Gaia</button>
+          <button class="secondary" style="text-align:center;" onclick="toggleLightCurve()">&#128200; Curva de Luz</button>
+          <button class="secondary" style="text-align:center;" onclick="downloadGif()">&#128229; Bajar GIF</button>
+          <select id="speed" style="width: 140px;" onchange="updateSpeed()">
+            <option value="900">Lento (1 fps)</option>
+            <option value="450" selected>Normal (2 fps)</option>
+            <option value="200">Rápido (5 fps)</option>
+          </select>
+        </div>
+        <div style="text-align:center; font-size:0.82rem; color:var(--muted);" id="frame-counter">
+          Fotograma 0 de 0
+        </div>
+      </div>
+      <div id="science-panel" style="display:none; width:100%; max-width:600px; margin-top:16px; background:#0f1624; border:1px solid #23304d; border-radius:8px; padding:14px; font-size:0.85rem;">
+        <strong id="science-title" style="color:#38bdf8;">Análisis Científico</strong>
+        <div id="science-content" style="margin-top:8px; color:#cbd5e1; line-height:1.5;"></div>
+      </div>
+      <canvas id="lightcurve-canvas" width="540" height="180" style="display:none; width:100%; margin-top:12px; background:#0b0f19; border-radius:6px; border:1px solid #1e293b;"></canvas>
+    </main>
+  </div>
+
+    <script>
+    var frames = [];
+    var currentIndex = 0;
+    var playInterval = null;
+    var isPlaying = false;
+    var lightCurveData = [];
+    var currentGifUrl = null;
+
+    async function loadPresets() {
+      try {
+        var res = await fetch('/api/presets');
+        var data = await res.json();
+        var container = document.getElementById('presets-list');
+        container.innerHTML = '';
+        for (var i = 0; i < data.presets.length; i++) {
+          (function(p) {
+            var btn = document.createElement('button');
+            btn.className = 'secondary';
+            btn.innerHTML = '<strong>' + p.name + '</strong><br><small style="color:#94a3b8">' + p.desc + '</small>';
+            btn.onclick = function() {
+              document.getElementById('ra').value = p.ra;
+              document.getElementById('dec').value = p.dec;
+              document.getElementById('band').value = 'ALL';
+              fetchTimelapse();
+            };
+            container.appendChild(btn);
+          })(data.presets[i]);
+        }
+      } catch (e) {
+        document.getElementById('presets-list').textContent = 'Error cargando lista: ' + e.message;
+      }
+    }
+
+    async function fetchTimelapse() {
+      stopPlay();
+      var ra = document.getElementById('ra').value.replace(',', '.').trim();
+      var dec = document.getElementById('dec').value.replace(',', '.').trim();
+      var size = document.getElementById('size').value;
+      var band = document.getElementById('band').value;
+      var status = document.getElementById('status-msg');
+      var btn = document.getElementById('btn-search');
+
+      btn.disabled = true;
+      status.textContent = 'Conectando con NASA/IPAC IRSA y descargando imágenes... (espera 10-20 seg)';
+
+      try {
+        var url = '/api/timelapse?ra=' + ra + '&dec=' + dec + '&size=' + size + '&band=' + encodeURIComponent(band) + '&max_frames=8';
+        var res = await fetch(url);
+        if (!res.ok) {
+          throw new Error('Error HTTP ' + res.status);
+        }
+        var data = await res.json();
+
+        var bandSelect = document.getElementById('band');
+        if (data.bands && data.bands.length > 0) {
+          var prevBand = bandSelect.value;
+          bandSelect.innerHTML = '<option value="ALL">Todas las bandas disponibles</option>';
+          for (var i = 0; i < data.bands.length; i++) {
+            var b = data.bands[i];
+            var opt = document.createElement('option');
+            opt.value = b;
+            opt.textContent = b;
+            if (b === prevBand) opt.selected = true;
+            bandSelect.appendChild(opt);
+          }
+        }
+
+        frames = data.frames || [];
+        diffImageUrl = data.diff_image_url || null;
+        diffCandidates = data.diff_candidates || [];
+        showingDiff = false;
+        lightCurveData = data.light_curve || [];
+        currentGifUrl = data.gif_url || null;
+        if (frames.length === 0) {
+          status.textContent = 'No se encontraron imágenes FITS válidas en estas coordenadas.';
+          document.getElementById('player-controls').style.display = 'none';
+          return;
+        }
+
+        document.getElementById('placeholder-text').style.display = 'none';
+        document.getElementById('frame-img').style.display = 'block';
+        document.getElementById('hud').style.display = 'flex';
+        document.getElementById('player-controls').style.display = 'flex';
+
+        var slider = document.getElementById('frame-slider');
+        slider.max = frames.length - 1;
+        slider.value = 0;
+
+        status.textContent = '¡Éxito! ' + frames.length + ' fotogramas cargados (de ' + data.total_found + ' observaciones).';
+        showFrame(0);
+        startPlay();
+      } catch (err) {
+        status.textContent = 'Error: ' + err.message;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function showFrame(idx) {
+      currentIndex = parseInt(idx);
+      var f = frames[currentIndex];
+      if (!f) return;
+      document.getElementById('frame-img').src = f.image_url;
+      document.getElementById('hud-date').textContent = 'Fecha: ' + f.date + ' UTC';
+      document.getElementById('hud-band').textContent = 'Banda: ' + f.band;
+      document.getElementById('frame-slider').value = currentIndex;
+      document.getElementById('frame-counter').textContent = 'Fotograma ' + (currentIndex + 1) + ' de ' + frames.length;
+    }
+
+    function startPlay() {
+      stopPlay();
+      if (frames.length < 2) return;
+      isPlaying = true;
+      document.getElementById('btn-play').innerHTML = '&#10074;&#10074; Pausar';
+      var ms = parseInt(document.getElementById('speed').value);
+      playInterval = setInterval(function() {
+        if (!isPlaying) return;
+        var next = (currentIndex + 1) % frames.length;
+        showFrame(next);
+      }, ms);
+    }
+
+    function stopPlay() {
+      isPlaying = false;
+      if (playInterval !== null) {
+        clearInterval(playInterval);
+        playInterval = null;
+      }
+      var btn = document.getElementById('btn-play');
+      if (btn) btn.innerHTML = '&#9654; Reproducir';
+    }
+
+    function togglePlay() {
+      if (isPlaying) stopPlay();
+      else startPlay();
+    }
+
+    function updateSpeed() {
+      if (isPlaying) { stopPlay(); startPlay(); }
+    }
+
+    function blinkEndpoints() {
+      if (frames.length < 2) return;
+      stopPlay();
+      showFrame(currentIndex === 0 ? frames.length - 1 : 0);
+    }
+
+    function copyShareLink() {
+      var ra = document.getElementById('ra').value;
+      var dec = document.getElementById('dec').value;
+      var size = document.getElementById('size').value;
+      var shareUrl = window.location.origin + '/?ra=' + ra + '&dec=' + dec + '&size=' + size;
+      navigator.clipboard.writeText(shareUrl);
+      document.getElementById('status-msg').textContent = '¡Enlace copiado al portapapeles!';
+    }
+
+    var diffImageUrl = null;
+    var diffCandidates = [];
+    var showingDiff = false;
+
+    function toggleDiffMode() {
+      if (!diffImageUrl) {
+        document.getElementById('status-msg').textContent = 'Se necesitan al menos 2 fotogramas del mismo tamaño para calcular la resta.';
+        return;
+      }
+      stopPlay();
+      showingDiff = !showingDiff;
+      var panel = document.getElementById('science-panel');
+      var title = document.getElementById('science-title');
+      var content = document.getElementById('science-content');
+
+      if (showingDiff) {
+        document.getElementById('frame-img').src = diffImageUrl;
+        document.getElementById('hud-date').textContent = 'Modo: Resta (Final - Inicial)';
+        panel.style.display = 'block';
+        title.textContent = 'Mapa de Diferencias (Difference Imaging)';
+        var listHtml = '';
+        if (diffCandidates.length > 0) {
+          listHtml = '<ul style="margin:8px 0 0 0; padding-left:18px;">';
+          for (var k = 0; k < diffCandidates.length; k++) {
+            var c = diffCandidates[k];
+            listHtml += '<li><strong>Objeto #' + c.id + ':</strong> Desplazamiento de <strong>' + c.shift_px + ' px (~' + c.shift_arcsec + ' arcsec)</strong> | Origen <code>(' + c.start_px + ')</code> &rarr; Destino <code>(' + c.end_px + ')</code></li>';
+          }
+          listHtml += '</ul>';
+        }
+        content.innerHTML = 'Cada círculo <span style="color:#00f2fe;font-weight:bold;">cian</span> marca el origen y el <span style="color:#facc15;font-weight:bold;">amarillo (#N)</span> el destino unido por su flecha de trayectoria. Los puntos rojos/azules sin pareja corresponden a ruido cósmico de una sola toma:' + listHtml;
+      } else {
+        showFrame(currentIndex);
+        panel.style.display = 'none';
+      }
+    }
+
+    async function queryGaiaCatalog() {
+      var ra = document.getElementById('ra').value.replace(',', '.').trim();
+      var dec = document.getElementById('dec').value.replace(',', '.').trim();
+      var size = document.getElementById('size').value;
+      var panel = document.getElementById('science-panel');
+      var title = document.getElementById('science-title');
+      var content = document.getElementById('science-content');
+
+      panel.style.display = 'block';
+      title.textContent = 'Consultando Catálogo Espacial Gaia DR3...';
+      content.textContent = 'Buscando fuentes astrométricas conocidas en NASA/IPAC IRSA...';
+
+      try {
+        var res = await fetch('/api/gaia?ra=' + ra + '&dec=' + dec + '&size=' + size);
+        var data = await res.json();
+        title.textContent = 'Catálogo Gaia DR3 (' + data.count + ' estrellas conocidas en el campo)';
+        if (data.count === 0) {
+          content.textContent = 'No se encontraron estrellas brillantes de Gaia en este recorte. ¡Cualquier fuente puntual aquí es un candidato de alto interés!';
+          return;
+        }
+        var html = '<ul style="margin:6px 0; padding-left:18px;">';
+        for (var i = 0; i < Math.min(5, data.sources.length); i++) {
+          var s = data.sources[i];
+          html += '<li><strong>Gaia ID ' + s.source_id + '</strong> | Mag G: ' + s.mag + ' | Mov. Propio: <strong>' + s.pm_total + ' mas/año</strong></li>';
+        }
+        html += '</ul>';
+        content.innerHTML = html;
+      } catch (e) {
+        content.textContent = 'Error consultando Gaia: ' + e.message;
+      }
+    }
+
+async function generateFalseColorRGB() {
+   stopPlay();
+   var ra = document.getElementById('ra').value.replace(',', '.').trim();
+   var dec = document.getElementById('dec').value.replace(',', '.').trim();
+   var size = document.getElementById('size').value;
+   var status = document.getElementById('status-msg');
+   var panel = document.getElementById('science-panel');
+   var title = document.getElementById('science-title');
+   var content = document.getElementById('science-content');
+
+   status.textContent = 'Combinando 3 bandas infrarrojas (Corta/Media/Larga) en composición RGB...';
+   panel.style.display = 'block';
+   title.textContent = 'Procesando Composición Multibanda RGB...';
+   content.textContent = 'Descargando canales espectrales desde NASA/IPAC IRSA...';
+
+   try {
+     var res = await fetch('/api/rgb?ra=' + ra + '&dec=' + dec + '&size=' + size);
+     var data = await res.json();
+     if (!res.ok) {
+       throw new Error(data.detail || 'Error generando imagen RGB');
+     }
+
+     document.getElementById('placeholder-text').style.display = 'none';
+     document.getElementById('frame-img').style.display = 'block';
+     document.getElementById('hud').style.display = 'flex';
+     document.getElementById('frame-img').src = data.rgb_image_url;
+     document.getElementById('hud-date').textContent = 'Modo: Falso Color Multibanda';
+     document.getElementById('hud-band').textContent = 'Composición RGB Infrarroja';
+     status.textContent = '¡Composición RGB Infrarroja generada con éxito!';
+
+     title.textContent = 'Composición Espectral en Falso Color (RGB)';
+     content.innerHTML =
+       '<ul style="margin:6px 0; padding-left:18px;">' +
+       '<li><span style="color:#f87171;font-weight:bold;">Canal Rojo (Infrarrojo Largo):</span> ' + data.channels.red + '</li>' +
+       '<li><span style="color:#4ade80;font-weight:bold;">Canal Verde (Infrarrojo Medio):</span> ' + data.channels.green + '</li>' +
+       '<li><span style="color:#60a5fa;font-weight:bold;">Canal Azul (Infrarrojo Corto):</span> ' + data.channels.blue + '</li>' +
+       '</ul><small style="color:#94a3b8;">Los objetos ultrafríos (como enanas marrones o candidatos a Planeta X) destacan en tonos rojizos intensos frente a estrellas calientes blanco-azuladas.</small>';
+   } catch (e) {
+     status.textContent = 'Aviso RGB: ' + e.message;
+     content.textContent = e.message;
+   }
+ }
+ function downloadGif() {
+  if (!currentGifUrl) {
+    document.getElementById('status-msg').textContent = 'Genera primero un Time-Lapse con al menos 2 fotogramas para descargar el GIF.';
+    return;
+  }
+  var a = document.createElement('a');
+  a.href = currentGifUrl;
+  a.download = 'SPHEREx_TimeLapse.gif';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  document.getElementById('status-msg').textContent = '¡Descargando animación GIF del Time-Lapse!';
+}
+
+function toggleLightCurve() {
+  var panel = document.getElementById('science-panel');
+  var title = document.getElementById('science-title');
+  var content = document.getElementById('science-content');
+  var canvas = document.getElementById('lightcurve-canvas');
+
+  if (lightCurveData.length < 2) {
+    document.getElementById('status-msg').textContent = 'Se necesitan al menos 2 observaciones para graficar la curva de luz.';
+    return;
+  }
+
+  panel.style.display = 'block';
+  canvas.style.display = 'block';
+  title.textContent = 'Curva de Luz Fotométrica (Variabilidad de Brillo en el Tiempo)';
+  content.textContent = 'Flujo infrarrojo medido en la apertura central (5×5 px) a través de ' + lightCurveData.length + ' épocas observadas:';
+
+  var ctx = canvas.getContext('2d');
+  var w = canvas.width;
+  var h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+
+  var fluxes = lightCurveData.map(function(d) { return d.flux; });
+  var minF = Math.min.apply(null, fluxes);
+  var maxF = Math.max.apply(null, fluxes);
+  var rangeF = (maxF - minF) || 1;
+  var pad = 32;
+
+  // Ejes guía
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(pad, pad / 2);
+  ctx.lineTo(pad, h - pad);
+  ctx.lineTo(w - pad / 2, h - pad);
+  ctx.stroke();
+
+  // Línea de curva de luz
+  ctx.strokeStyle = '#38bdf8';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  for (var i = 0; i < lightCurveData.length; i++) {
+    var x = pad + (i / (lightCurveData.length - 1)) * (w - pad * 1.6);
+    var y = (h - pad) - ((lightCurveData[i].flux - minF) / rangeF) * (h - pad * 1.6);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Puntos y etiquetas de fecha
+  ctx.fillStyle = '#f87171';
+  ctx.font = '10px monospace';
+  for (var j = 0; j < lightCurveData.length; j++) {
+    var px = pad + (j / (lightCurveData.length - 1)) * (w - pad * 1.6);
+    var py = (h - pad) - ((lightCurveData[j].flux - minF) / rangeF) * (h - pad * 1.6);
+    ctx.beginPath();
+    ctx.arc(px, py, 4, 0, Math.PI * 2);
+    ctx.fill();
+    if (j === 0 || j === lightCurveData.length - 1) {
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillText(lightCurveData[j].date.slice(0, 10), px - 24, h - 10);
+      ctx.fillStyle = '#f87171';
+    }
+  }
+}
+
+async function generateGaiaOverlay() {
+   stopPlay();
+   var ra = document.getElementById('ra').value.replace(',', '.').trim();
+   var dec = document.getElementById('dec').value.replace(',', '.').trim();
+   var size = document.getElementById('size').value;
+   var status = document.getElementById('status-msg');
+   var panel = document.getElementById('science-panel');
+   var title = document.getElementById('science-title');
+   var content = document.getElementById('science-content');
+
+   status.textContent = 'Proyectando coordenadas WCS de ESA Gaia DR3 sobre la imagen SPHEREx...';
+   panel.style.display = 'block';
+   document.getElementById('lightcurve-canvas').style.display = 'none';
+   title.textContent = 'Calculando Proyección Astrométrica WCS...';
+   content.textContent = 'Cruzando encabezados FITS de NASA SPHEREx con ESA Gaia DR3...';
+
+   try {
+     var res = await fetch('/api/overlay?ra=' + ra + '&dec=' + dec + '&size=' + size);
+     var data = await res.json();
+     if (!res.ok) {
+       throw new Error(data.detail || 'Error generando Overlay WCS');
+     }
+
+     document.getElementById('placeholder-text').style.display = 'none';
+     document.getElementById('frame-img').style.display = 'block';
+     document.getElementById('hud').style.display = 'flex';
+     document.getElementById('frame-img').src = data.overlay_image_url;
+     document.getElementById('hud-date').textContent = 'Modo: Overlay Astrométrico WCS';
+     document.getElementById('hud-band').textContent = 'SPHEREx + ESA Gaia DR3';
+     status.textContent = '¡Overlay WCS completado! ' + data.marked_count + ' fuentes catalogadas marcadas.';
+
+     title.textContent = 'Superposición Astrométrica WCS (NASA SPHEREx + ESA Gaia DR3)';
+     content.innerHTML =
+       '<ul style="margin:6px 0; padding-left:18px;">' +
+       '<li><span style="color:#38bdf8;font-weight:bold;">Círculos Celestes:</span> Estrellas conocidas identificadas en el catálogo espacial Gaia DR3 (' + data.marked_count + ' en este campo).</li>' +
+       '<li><span style="color:#facc15;font-weight:bold;">Flechas Amarillas:</span> Vector de dirección del movimiento propio estelar.</li>' +
+       '<li><span style="color:#f87171;font-weight:bold;">Criterio de Descubrimiento:</span> Cualquier punto luminoso sin círculo celeste es un candidato no catalogado (asteroide, cometa o Planeta X).</li>' +
+       '</ul>';
+   } catch (e) {
+     status.textContent = 'Aviso Overlay: ' + e.message;
+     content.textContent = e.message;
+   }
+ }
+
+    window.onload = function() {
+      loadPresets();
+      var params = new URLSearchParams(window.location.search);
+      if (params.has('ra') && params.has('dec')) {
+        document.getElementById('ra').value = params.get('ra');
+        document.getElementById('dec').value = params.get('dec');
+        if (params.has('size')) document.getElementById('size').value = params.get('size');
+        fetchTimelapse();
+      }
+    };
+  </script>
+</body>
+</html>
