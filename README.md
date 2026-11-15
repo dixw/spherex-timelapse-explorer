@@ -16,7 +16,7 @@
 
 ## Installation & Quick Start
 ```bash
-git clone https://github.com
+git clone https://github.com/dixw/spherex-timelapse-explorer
 cd spherex-timelapse-explorer
 python -m venv venv
 source venv/Scripts/activate  # Windows Git Bash
